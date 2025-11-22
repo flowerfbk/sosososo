@@ -660,7 +660,7 @@ class TokenManager:
         sora2_remaining_count = 0
         try:
             sora2_info = await self.get_sora2_invite_code(token_value)
-            sora2_supported = sora2_info.get("supported", False)
+            sora2_supported = sora2_info.get("supported", True) #fix
             sora2_invite_code = sora2_info.get("invite_code")
             sora2_redeemed_count = sora2_info.get("redeemed_count", 0)
             sora2_total_count = sora2_info.get("total_count", 0)
