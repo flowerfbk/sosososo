@@ -79,7 +79,6 @@ class GenerationHandler:
         self.load_balancer = load_balancer
         self.db = db
         self.concurrency_manager = concurrency_manager
-        self.proxy_manager = proxy_manager
         self.file_cache = FileCache(
             cache_dir="tmp",
             default_timeout=config.cache_timeout,
@@ -178,7 +177,7 @@ class GenerationHandler:
         """
         from curl_cffi.requests import AsyncSession
 
-        proxy_url = await self.proxy_manager.get_proxy_url() if self.proxy_manager else None
+        proxy_url = await self.load_balancer.proxy_manager.get_proxy_url()
 
         kwargs = {
             "timeout": 30,
@@ -493,6 +492,8 @@ class GenerationHandler:
                             else:
                                 progress_pct = int(progress_pct * 100)
 
+                            # Update last_progress for tracking
+                            last_progress = progress_pct
                             status = task.get("status", "processing")
 
                             # Output status every 30 seconds (not just when progress changes)
@@ -955,7 +956,7 @@ class GenerationHandler:
 
         try:
             yield self._format_stream_chunk(
-                reasoning_content="【角色接口】开始角色创建流程，准备调用 /characters/upload 上传视频...\n",
+                reasoning_content="【角色接口】初始化角色创建流程...\n",
                 is_first=True
             )
 
@@ -963,7 +964,7 @@ class GenerationHandler:
             if isinstance(video_data, str):
                 # It's a URL, download it
                 yield self._format_stream_chunk(
-                    reasoning_content="Downloading video file...\n"
+                    reasoning_content="【角色接口】下载角色视频素材...\n"
                 )
                 video_bytes = await self._download_file(video_data)
             else:
@@ -971,14 +972,14 @@ class GenerationHandler:
 
             # Step 1: Upload video
             yield self._format_stream_chunk(
-                reasoning_content="【角色接口】调用 /characters/upload 上传角色视频...\n"
+                reasoning_content="【角色接口】POST /characters/upload 上传角色视频...\n"
             )
             cameo_id = await self.sora_client.upload_character_video(video_bytes, token_obj.token)
             debug_logger.log_info(f"Video uploaded, cameo_id: {cameo_id}")
 
             # Step 2: Poll for character processing
             yield self._format_stream_chunk(
-                reasoning_content="【角色接口】调用 /project_y/cameos/in_progress 轮询角色处理进度...\n"
+                reasoning_content="【角色接口】GET /project_y/cameos/in_progress/{cameo_id} 轮询角色处理进度...\n"
             )
             cameo_status = await self._poll_cameo_status(cameo_id, token_obj.token)
             debug_logger.log_info(f"Cameo status: {cameo_status}")
@@ -992,12 +993,12 @@ class GenerationHandler:
 
             # Output character name immediately
             yield self._format_stream_chunk(
-                reasoning_content=f"✨ 角色已识别: {display_name} (@{username})\n"
+                reasoning_content=f"【角色接口】角色识别完成: {display_name} (@{username})\n"
             )
 
             # Step 3: Download and cache avatar
             yield self._format_stream_chunk(
-                reasoning_content="【角色接口】下载 profile_asset_url 获取角色头像...\n"
+                reasoning_content="【角色接口】GET profile_asset_url 下载角色头像...\n"
             )
             profile_asset_url = cameo_status.get("profile_asset_url")
             if not profile_asset_url:
@@ -1008,14 +1009,14 @@ class GenerationHandler:
 
             # Step 4: Upload avatar
             yield self._format_stream_chunk(
-                reasoning_content="【角色接口】调用 /project_y/file/upload 上传角色头像...\n"
+                reasoning_content="【角色接口】POST /project_y/file/upload 上传角色头像...\n"
             )
             asset_pointer = await self.sora_client.upload_character_image(avatar_data, token_obj.token)
             debug_logger.log_info(f"Avatar uploaded, asset_pointer: {asset_pointer}")
 
             # Step 5: Finalize character
             yield self._format_stream_chunk(
-                reasoning_content="【角色接口】调用 /characters/finalize 提交角色资料...\n"
+                reasoning_content="【角色接口】POST /characters/finalize 提交角色档案...\n"
             )
             # instruction_set_hint is a string, but instruction_set in cameo_status might be an array
             instruction_set = cameo_status.get("instruction_set_hint") or cameo_status.get("instruction_set")
@@ -1032,7 +1033,7 @@ class GenerationHandler:
 
             # Step 6: Set character as public
             yield self._format_stream_chunk(
-                reasoning_content="【角色接口】调用 /project_y/cameos/by_id/{cameo_id}/update_v2 设置角色公开...\n"
+                reasoning_content="【角色接口】POST /project_y/cameos/by_id/{cameo_id}/update_v2 设置角色为公开...\n"
             )
             await self.sora_client.set_character_public(cameo_id, token_obj.token)
             debug_logger.log_info(f"Character set as public")
@@ -1073,7 +1074,7 @@ class GenerationHandler:
         character_id = None
         try:
             yield self._format_stream_chunk(
-                reasoning_content="【角色接口】开始角色创建流程，准备调用 /characters/upload 上传视频...\n",
+                reasoning_content="【角色接口】初始化角色创建并准备视频生成...\n",
                 is_first=True
             )
 
@@ -1081,7 +1082,7 @@ class GenerationHandler:
             if isinstance(video_data, str):
                 # It's a URL, download it
                 yield self._format_stream_chunk(
-                    reasoning_content="Downloading video file...\n"
+                    reasoning_content="【角色接口】下载角色视频素材...\n"
                 )
                 video_bytes = await self._download_file(video_data)
             else:
@@ -1089,14 +1090,14 @@ class GenerationHandler:
 
             # Step 1: Upload video
             yield self._format_stream_chunk(
-                reasoning_content="【角色接口】调用 /characters/upload 上传角色视频...\n"
+                reasoning_content="【角色接口】POST /characters/upload 上传角色视频...\n"
             )
             cameo_id = await self.sora_client.upload_character_video(video_bytes, token_obj.token)
             debug_logger.log_info(f"Video uploaded, cameo_id: {cameo_id}")
 
             # Step 2: Poll for character processing
             yield self._format_stream_chunk(
-                reasoning_content="【角色接口】调用 /project_y/cameos/in_progress 轮询角色处理进度...\n"
+                reasoning_content="【角色接口】GET /project_y/cameos/in_progress/{cameo_id} 轮询角色处理进度...\n"
             )
             cameo_status = await self._poll_cameo_status(cameo_id, token_obj.token)
             debug_logger.log_info(f"Cameo status: {cameo_status}")
@@ -1110,12 +1111,12 @@ class GenerationHandler:
 
             # Output character name immediately
             yield self._format_stream_chunk(
-                reasoning_content=f"✨ 角色已识别: {display_name} (@{username})\n"
+                reasoning_content=f"【角色接口】角色识别完成: {display_name} (@{username})\n"
             )
 
             # Step 3: Download and cache avatar
             yield self._format_stream_chunk(
-                reasoning_content="【角色接口】下载 profile_asset_url 获取角色头像...\n"
+                reasoning_content="【角色接口】GET profile_asset_url 下载角色头像...\n"
             )
             profile_asset_url = cameo_status.get("profile_asset_url")
             if not profile_asset_url:
@@ -1126,14 +1127,14 @@ class GenerationHandler:
 
             # Step 4: Upload avatar
             yield self._format_stream_chunk(
-                reasoning_content="【角色接口】调用 /project_y/file/upload 上传角色头像...\n"
+                reasoning_content="【角色接口】POST /project_y/file/upload 上传角色头像...\n"
             )
             asset_pointer = await self.sora_client.upload_character_image(avatar_data, token_obj.token)
             debug_logger.log_info(f"Avatar uploaded, asset_pointer: {asset_pointer}")
 
             # Step 5: Finalize character
             yield self._format_stream_chunk(
-                reasoning_content="【角色接口】调用 /characters/finalize 提交角色资料...\n"
+                reasoning_content="【角色接口】POST /characters/finalize 提交角色档案...\n"
             )
             # instruction_set_hint is a string, but instruction_set in cameo_status might be an array
             instruction_set = cameo_status.get("instruction_set_hint") or cameo_status.get("instruction_set")
@@ -1203,7 +1204,7 @@ class GenerationHandler:
             if character_id:
                 try:
                     yield self._format_stream_chunk(
-                        reasoning_content="【角色接口】调用 /project_y/characters/{character_id} 删除临时角色...\n"
+                        reasoning_content="【角色接口】DELETE /project_y/characters/{character_id} 清理临时角色...\n"
                     )
                     await self.sora_client.delete_character(character_id, token_obj.token)
                     debug_logger.log_info(f"Character deleted: {character_id}")
