@@ -79,10 +79,11 @@ class GenerationHandler:
         self.load_balancer = load_balancer
         self.db = db
         self.concurrency_manager = concurrency_manager
+        self.proxy_manager = proxy_manager
         self.file_cache = FileCache(
             cache_dir="tmp",
             default_timeout=config.cache_timeout,
-            proxy_manager=proxy_manager
+            proxy_manager=self.proxy_manager
         )
 
     def _get_base_url(self) -> str:
