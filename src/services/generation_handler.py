@@ -177,7 +177,7 @@ class GenerationHandler:
         """
         from curl_cffi.requests import AsyncSession
 
-        proxy_url = await self.load_balancer.proxy_manager.get_proxy_url()
+        proxy_url = await self.proxy_manager.get_proxy_url() if self.proxy_manager else None
 
         kwargs = {
             "timeout": 30,
@@ -884,7 +884,7 @@ class GenerationHandler:
             response["usage"]["completion_tokens"] = 1
             response["usage"]["total_tokens"] = 1
 
-        return f'data: {json.dumps(response)}\n\n'
+        return f'data: {json.dumps(response, ensure_ascii=False)}\n\n'
     
     def _format_non_stream_response(self, content: str, media_type: str = None, is_availability_check: bool = False) -> str:
         """Format non-streaming response
@@ -915,7 +915,7 @@ class GenerationHandler:
                 "finish_reason": "stop"
             }]
         }
-        return json.dumps(response)
+        return json.dumps(response, ensure_ascii=False)
 
     async def _log_request(self, token_id: Optional[int], operation: str,
                           request_data: Dict[str, Any], response_data: Dict[str, Any],
